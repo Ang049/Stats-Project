@@ -1,0 +1,182 @@
+---
+title: "Midterm of STAT140XP"
+author: "Ang Li"
+date: "2023-02-09"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo = FALSE, message = FALSE, warning= FALSE}
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(openxlsx)
+library(xtable) # may need a LaTeX install
+```
+
+```{r echo = FALSE}
+my_data=read.xlsx("midterm_data.xlsx")
+```
+
+## Statement of the problem
+The data is originated from UCLA Statistics Department, especially information of STAT 140XP and 141XP. Since these two courses were taught by different professor, tt gives us a basic review of the amount of students took each professor in each quarter, the basic information of students, the characteristic, and so on. 
+
+STAT 140XP was taught by Zes and Lew, STAT 141XP was taught by Zes and Esfandiari, the NA means the students did not take STAT141XP. The survey was taken anonymously. Due to the classroom capacity, regulations by UCLA Statistic department, or time conflict of these three professors, by using the department data, we will answer the fallowing questions:
+
+* Does students choosing professors of STAT 140XP affect that in STAT 141XP?
+    + H_0: There is no interaction effect between choosing the instructors in STAT 140XP and STAT 141XP.
+    + H_A: There is a interaction effect between choosing the instructors in STAT 140XP and STAT 141XP.
+* Predict which students (from Instructor1 = Lew, Quarter = 2) will have instructor2 = Zes vs. instructor2 = Esfandiari (assume Zes will have 30 and Esfandiari will have the remainder) ?
+    + We will determine this through a random forest and predict current students who are taking STAT 140XP will choose which instructor in STAT 141XP next quarter.
+
+## Data Description and Analysis Preparation
+
+Firstly, the data of quarter1 and quarter2 in the data set are selected, and then deleting some useless variables with many missing values.
+
+```{r comment = "", message = FALSE, echo = FALSE}
+#Quarter = 1
+data1=my_data%>%filter(Quarter==1&is.na(Instructor2)==F)%>%select(-c(2,5,8,15:18))%>%na.omit()
+#Quarter =2
+data2=my_data%>%filter(Quarter==2)%>%select(-c(2,5,8,15:18))
+```
+## Analysis
+
+```{r comment = "", message = FALSE, echo = FALSE, warning = FALSE}
+S= table(data1[, c(2,3)]) %>% as.data.frame()
+data11=S%>%group_by(Instructor1 )%>%mutate(per=paste0(round(Freq/sum(Freq)*100,2),"%"))
+data11$Freq_label=ifelse(data11$Freq==0,"",data11$Freq)
+data11$Freq_label=ifelse(data11$Freq_label=="","",paste0(data11$Freq_label,"(",data11$per,")"))
+  
+  
+# start
+ggplot(data11, aes(x =Instructor1  , y = Freq,fill=Instructor2 )) +
+  # bar chart
+    geom_bar(stat = 'identity', position="dodge") +
+    theme_classic() + 
+    # Add a count label
+    geom_text(aes(label = Freq_label), position = position_dodge2(preserve = 'single',width = 0.9),
+              vjust = -0.5, size = 2)+
+    #labels
+    labs(x = "Instructor1 ", y = "Count") +
+    theme(
+      axis.title.x = element_text(
+        size = 8,
+        face = "bold"
+      ),
+      axis.title.y = element_text(
+        size = 8,
+        face = "bold"
+      ),
+      axis.text.x = element_text(
+        size = 8,
+        face = "bold"
+      ),
+      axis.text.y = element_text(
+        size = 8,
+        face = "bold"
+      )
+    ) 
+
+```
+## Analysis
+
+Draw the block frequency bar chart of instructors who taught STAT 140XP in fall quarter and instructors who taught STAT 141XP in winter quarter. As we can see the figure, when professor taught STAT 140XP is Lew, the percentage of Zes who took STAT 141XP is higher. Furthermore, when professor taught STAT 140XP is Zes, the percentage of Esfandiari takes up more.
+Furthermore, we did the "chi square test" and found that the p-value is 0.548 which is greater than 0.05. It means we still have strong evident to support the null hypothesis that
+choosing instructor1 will not affect the choice of choosing instructor2.
+```{r comment = "", message = FALSE, echo = FALSE}
+chisq_test = chisq.test(table(data1[, c(2,3)]))
+chisq_test = c(X_squared = 0.36093, df = 1, p_value = 0.548)
+chisq_test = data.frame(chisq_test)
+#print(xtable(chisq_test))
+```
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{rr}
+  \hline
+ & chisq\_test \\ 
+  \hline
+X\_squared & 0.36 \\ 
+  df & 1.00 \\ 
+  p\_value & 0.55 \\ 
+   \hline
+\end{tabular}
+\end{table}
+
+After considering the relationship between choosing instructor1 in the fall quarter and instructors in the winter quarter. Now, we set up the random forest model to determine which variables are most important (the most effective) to students who choose professor in STAT 141XP in the winter quarter.
+
+```{r comment = "", message = FALSE, echo = FALSE}
+set.seed(1)
+library(randomForest)
+data1$Instructor2=as.factor(data1$Instructor2)
+model1 = randomForest(Instructor2 ~ ., data = data1[,-1], ntree = 1000)
+model1_summary = summary(model1)
+#print(xtable(model1_summary))
+```
+\begin{table}[ht]
+\centering
+\begin{tabular}{rlll}
+  \hline
+ & Length & Class & Mode \\ 
+  \hline
+call &    4 & -none- & call \\ 
+  type &    1 & -none- & character \\ 
+  predicted &  104 & factor & numeric \\ 
+  err.rate & 3000 & -none- & numeric \\ 
+  confusion &    6 & -none- & numeric \\ 
+  votes &  208 & matrix & numeric \\ 
+  oob.times &  104 & -none- & numeric \\ 
+  classes &    2 & -none- & character \\ 
+  importance &   16 & -none- & numeric \\ 
+  importanceSD &    0 & -none- & NULL \\ 
+  localImportance &    0 & -none- & NULL \\ 
+  proximity &    0 & -none- & NULL \\ 
+  ntree &    1 & -none- & numeric \\ 
+  mtry &    1 & -none- & numeric \\ 
+  forest &   14 & -none- & list \\ 
+  y &  104 & factor & numeric \\ 
+  test &    0 & -none- & NULL \\ 
+  inbag &    0 & -none- & NULL \\ 
+  terms &    3 & terms & call \\ 
+   \hline
+\end{tabular}
+\end{table}
+
+
+```{r comment = "", message = FALSE, echo = FALSE}
+oob.err.data1 = data.frame(
+  Trees = rep(1:nrow(model1$err.rate), 3), 
+  Type = rep(c("OOB","Esfandiari","Zes"), each = nrow(model1$err.rate)),
+  Error = c(model1$err.rate[,"OOB"], model1$err.rate[,"Esfandiari"], model1$err.rate[,"Zes"]))
+#No. of tree vs error plot
+#ggplot(data = oob.err.data1, aes(x = Trees, y= Error)) + geom_line(aes(color = Type))
+```
+And then based on the importance graph, we can find the most important predictor is Cempy and corresponding is calis.
+
+```{r comment = "", message = FALSE, echo = FALSE}
+varImpPlot(model1)
+```
+
+Lastly, based on the requirenment, 30 students are selected to Zes to take STAT 141XP in the winter quarter, and the rest 53 students will take STAT 141XP class with Esfaniari, and the chart below shows which student(ID) will choose which professor. (Due to the page limit, I cannot provide the detail of table which includes which students take which professors in the winter quarter of STAT 141XP).
+
+```{r comment = "", message = FALSE, echo = FALSE}
+prob=predict(model1,data2[,-1],type="prob")
+#choose a threshold value
+pred=ifelse(prob[,2]>0.585,"Zes","Esfandiari")
+#table(pred)
+```
+
+```{r comment = "", message = FALSE, echo = FALSE}
+names(pred)=data2$ID
+prediction = pred #predict  value
+
+```
+## Conclusions
+1. Based on the chi-square test, we find that there is no relationship between students choosing which professor for STAT 140XP this quarter and for STAT 141XP next quarter. 
+
+2. Based on the random forest results, we find that the most important predictor is Cempy and the corresponding is calis.
+
+3. Overall, we can make a prediction that each student taking STAT 140XP in the winter quarter would choose which professor for STAT 141XP in the spring 
