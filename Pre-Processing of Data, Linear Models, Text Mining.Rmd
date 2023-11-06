@@ -1,0 +1,261 @@
+---
+title: "Bruinwalk data Pre-Possessing"
+author: "Ang Li"
+date: "2023-05-17"
+output:
+  pdf_document: default
+---
+
+```{r}
+library(dplyr)
+library(tidyr)
+original <- read.csv("progress (16).csv")
+```
+
+```{r}
+# Cleaning
+data <- subset(original, complete.cases(original)) # Remove NA
+# Separate Metrics 
+rating_columns <- c('Overall', 'Users', 'Easiness', 'Clarity', 'Workload', 'Helpfulness')
+for (col in rating_columns) {
+  data[[col]] <- sapply(data$Course.Ratings, function(x) {
+    rating_regex <- paste0("'", col, "':\\s(\\d+\\.?\\d*)")
+    rating_match <- regmatches(x, regexec(rating_regex, x))
+    if (length(rating_match[[1]]) > 1) {
+      rating <- as.numeric(regmatches(rating_match[[1]], regexec("\\d+\\.?\\d*", rating_match[[1]]))[[1]])
+      return(rating)
+    } else {
+      return(NA)
+    }
+  })
+}
+
+# Remove Reviews for Classes with no Ratings and Add Additional Rows to Create Weighted Component
+removed <- subset(data, complete.cases(data))
+removed$Review.Date <- as.Date(removed$Review.Date, format = "%m/%d/%Y")
+unique_rows <- removed[!duplicated(removed$Course.Code), ]
+unique_rows <- unique_rows[,-6]
+weighted_data <- unique_rows[rep(seq_len(nrow(unique_rows)), unique_rows$Users),]
+
+```
+# EDA 
+
+```{r}
+# Filtering by Date
+new <- read.csv("final.csv")
+new$Review.Date <- as.Date(new$Review.Date, format = "%Y-%m-%d")
+dim(new)
+head(new)
+```
+
+```{r}
+library(ggplot2)
+data<- new
+data$covid = ifelse(data$Review.Date < as.Date("2020-01-01"), "Before COVID", "After COVID")
+review_counts <- table(data$covid)
+plot_data <- data.frame(Period = names(review_counts), Count = as.numeric(review_counts))
+# Plotting the graph
+ggplot(plot_data, aes(x = Period, y = Count, fill = Period)) +
+geom_bar(stat = "identity") +
+labs(title = "Number of Reviews Before and After COVID",
+x = "Period",
+y = "Number of Reviews") +
+scale_fill_manual(values = c("lightblue", "cornflowerblue")) +
+theme_minimal()
+```
+
+
+```{r}
+library(lubridate)
+new$Year <- year(new$Review.Date)
+years <- table(new$Year)
+plot(years, ylab=  "Count", ylim = c(0,8000), main = "Count of Reviews Each Year")
+abline(v = 2019.5, col = "red", lty = 2)
+text(2019.5, 7500, "COVID", pos = 4, col = "red")
+
+```
+
+
+```{r}
+data <- new
+Count_overall_rating <- table(data$Overall)
+plot(Count_overall_rating, xlim = c(1, 5), xlab = "Score", ylab = "Count",  xaxt = "n")
+axis(1, at = seq(1, 5, by = 0.5), labels = c(1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5))
+
+par(mfrow = c(2,2))
+Count_Easiness_rating <- table(data$Easiness)
+plot(Count_Easiness_rating, xlim = c(1,5), ylab = "Count" ,  xlab = "Score", main= "Distribution of 'Easiness' Rating", xaxt = "n")
+axis(1, at = seq(1, 5, by = 0.5), labels = c(1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5))
+Count_Clarity_rating <- table(data$Clarity)
+plot(Count_Clarity_rating, xlim = c(1,5), ylab = "Count" ,  xlab = "Score", main= "Distribution of 'Clarity' Rating", xaxt = "n")
+axis(1, at = seq(1, 5, by = 0.5), labels = c(1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5))
+
+Count_Workload_rating <- table(data$Workload)
+plot(Count_Workload_rating, xlim = c(1,5), ylab = "Count" ,  xlab = "Score", main= "Distribution of 'Workload' Rating", xaxt = "n")
+axis(1, at = seq(1, 5, by = 0.5), labels = c(1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5))
+
+Count_Helpfulness_rating <- table(data$Helpfulness)
+plot(Count_Helpfulness_rating, xlim = c(1,5), ylab = "Count" , xlab = "Score",  main= "Distribution of 'Helpfulness' Rating", xaxt = "n")
+axis(1, at = seq(1, 5, by = 0.5), labels = c(1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5))
+
+mean(data$Overall)
+mean(data$Users)
+summary(data$Overall)
+sd(data$Overall)
+
+mean(data$Easiness)
+sd(data$Easiness)
+
+mean(data$Workload)
+sd(data$Workload)
+
+
+mean(data$Clarity)
+sd(data$Clarity)
+
+mean(data$Helpfulness)
+sd(data$Helpfulness)
+```
+
+```{r}
+library(corrplot)
+head(data)
+class_char <- data[,13:18]
+cor_matrix <- cor(class_char)
+corrplot(cor_matrix, method = "color", type = "upper", tl.col = "black",
+         tl.srt = 45, addCoef.col = "black", tl.cex = 0.8)
+cor(data$Easiness, data$Workload)
+cor(data$Clarity, data$Helpfulness)
+```
+
+```{r}
+users <- table(new$Users)
+plot(users, ylab = "Frequency", main = "Raters per Class")
+mean(new$Users)
+```
+
+
+
+```{r}
+library(randomForest)
+combined <- new[,12:19]
+combined <- combined[complete.cases(combined),]
+#RF importance (takes forever so commented out )
+#rf <- randomForest(Overall~., data = combined, importance = T, ntree = 100)
+#varImpPlot(rf, type = 1, main = "Variable Importance Plot")
+
+#All 5 Variables
+all_var <- lm(Overall~Users+ Easiness+ Clarity+Workload+ Helpfulness, data = new)
+all_sum <- summary(all_var)
+all <- all_sum$adj.r.squared
+
+#Interaction Effects
+int_var <- lm(Overall~Users*Easiness* Clarity*Workload*Helpfulness, data = new)
+int_sum <- summary(int_var)
+int <- int_sum$adj.r.squared
+
+#Best Subset
+library(leaps)
+best_subset <- regsubsets(Overall~Users*Easiness* Clarity*Workload*Helpfulness, data = new)
+best_sum <- summary(best_subset)
+r2 <- best_sum$adjr2
+index <- which.max(r2)
+best_predictors <- colnames(best_sum$outmat)[index, drop = FALSE]
+best_predictors
+best_model <- lm(Overall ~ Easiness*Clarity, data = new)
+new_mod <- summary(best_model)
+best <- new_mod$adj.r.squared
+
+#Just interaction Effects
+eas_work <- interaction(new$Easiness, new$Workload, drop = T)
+clar_help <- interaction(new$Clarity, new$Helpfulness, drop = T)
+just_int <-lm(new$Overall~eas_work + clar_help)
+just_sum <- summary(just_int)
+interactions <- just_sum$adj.r.squared
+
+#Just interaction Effects with users (made no difference so commented out)
+
+int_users <- lm(new$Overall~eas_work + clar_help+new$Users)
+new_mod <- summary(int_users)
+int_w_users <- new_mod$adj.r.squared
+
+#pca 
+combined <- new[,c("Overall","Easiness", "Clarity", "Workload", "Helpfulness")]
+pca_result <- prcomp(combined[,-1])
+pc <- pca_result$x
+loadings <- pca_result$rotation
+variance_explained <- (pca_result$sdev^2) / sum(pca_result$sdev^2)  # Variance explained by each principal component
+proportion_of_variance <- variance_explained * 100  # Proportion of total variance explained (as a percentage)
+cumulative_variance <- cumsum(proportion_of_variance) 
+screeplot(pca_result, type = "lines", main = "Elbow Plot")
+selected_components <- pc[, 1:2]
+new_combined <- data.frame(new$Overall, selected_components)
+model <- lm(new.Overall ~ ., data = new_combined)
+pc_sum <- summary(model)
+pca <- pc_sum$adj.r.squared
+
+
+results <- data.frame(Model = c("all", "int", "best", "interactions", "pca", "int_w_users"),
+                      Adjusted_R2 = c(all, int, best, interactions, pca, int_w_users))
+results
+```
+```{r}
+plot(new$Overall~eas_work + clar_help)
+plot(just_int$residuals ~ just_int$fitted.values)
+hist(just_int$residuals)
+qqnorm(just_int$residuals)
+library(car)
+durbinWatsonTest(just_int)
+```
+
+```{r}
+combined <- new[,c("Overall","Users", "Easiness", "Clarity", "Workload", "Helpfulness")]
+
+z_scores <- scale(combined)
+
+# Identify outliers based on the Z-score threshold
+outliers <- which(apply(abs(z_scores), 1, max) > 3)
+
+# Extract the rows corresponding to outliers
+outlier_rows <- new[outliers, ]
+recent <- outlier_rows[outlier_rows$Review.Date > "2017-01-01",]
+rec_more_users <- recent[recent$Users > 1,]
+rec_more_users
+
+```
+
+```{r}
+out_reviews <- rec_more_users$Review.Text
+
+# Load the required packages
+library(tidytext)
+library(wordcloud)
+
+# Create a data frame from the text data
+df <- data.frame(text = out_reviews)
+
+# Clean and tokenize the text data into phrases
+df <- df %>%
+  mutate(text = tolower(text)) %>%
+  unnest_tokens(phrase, text, token = "ngrams", n = 5)  # Generate phrases of two words
+
+# Remove common English stop words and phrases containing "class"
+df <- df %>%
+  filter(!(phrase %in% stopwords("english")) & !grepl("\\bclass\\b", phrase)& !grepl("\\bof\\b", phrase)& !grepl("\\the\\b", phrase)& !grepl("\\bif\\b", phrase)& !grepl("\\byou\\b", phrase))
+
+# Calculate the phrase frequencies
+phrase_freq <- df %>%
+  count(phrase)
+
+# Generate the word cloud with adjusted size and phrases
+wordcloud(
+  phrase_freq$phrase,
+  phrase_freq$n,
+  scale = c(3, 0.5),  # Adjust the size of the phrases (minimum and maximum)
+  max.words = 50,     # Limit the number of phrases displayed in the word cloud
+  random.order = FALSE  # Disable random phrase ordering for better readability
+)
+
+
+```
+
