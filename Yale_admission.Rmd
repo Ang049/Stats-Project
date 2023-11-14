@@ -1,0 +1,110 @@
+---
+title: "Yale_admission"
+author: "Ang Li"
+date: "2023-11-13"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## The whole dataset is from Kaggle, from https://www.kaggle.com/datasets/rcd1693/yale-admissions 
+```{r}
+## load the dataset
+yale = read.csv("YaleAdmits.csv", header = TRUE)
+View(yale)
+```
+
+## EDA
+```{r}
+## take all the mean and median of these variables
+# store all the data in one dataframe
+result_df = data.frame()
+
+for (col in names(yale)) {
+  # exclude "Year.Entered"
+  if (col != "Year.Entered") {
+    # if columns are numerical
+    if (is.numeric(yale[[col]])) {
+      # calculate mean and median
+      mean_val = round(mean(yale[[col]], na.rm = TRUE), digits = 2)
+      median_val = round(median(yale[[col]], na.rm = TRUE), digits = 2)
+      result_df = rbind(result_df, c(col, mean_val, median_val))
+    }
+    # If the columns are categorical, do nothing
+  }
+}
+
+colnames(result_df) = c("Variable", "Mean", "Median")
+print(result_df)
+```
+
+## See the ralationship between variables
+```{r}
+library(ggplot2)
+ggplot(yale, aes(x = Applications, y = Admits)) +
+  geom_point(fill = "blue", shape = 21, color = "white") +
+  geom_smooth(method = "loess", se = FALSE, color = "red") +
+  labs(title = "Scatter Plot of Applications vs Admits with Loess Curve",
+       x = "Applications",
+       y = "Admits")
+```
+
+```{r}
+variable_names = names(yale)[-1]
+theme_set(theme_minimal())
+my_colors = c("#66c2a5", "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854")
+
+for (variable in variable_names) {
+  # determine whether variables are numeric or not
+  if (is.numeric(yale[[variable]])) {
+    # dot plot
+    plot = ggplot(yale, aes(x = Year.Entered, y = yale[[variable]])) +
+      geom_point(color = my_colors[1], size = 3) +  
+      geom_smooth(method = "loess", se = FALSE, color = my_colors[2]) + # add the curved line to fit
+      labs(title = paste("Scatter Plot of YearEntered vs", variable),
+           x = "Year.Entered",
+           y = variable) +
+      theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), 
+            axis.text = element_text(color = "black"), axis.title = element_text(color = "black"))  
+    print(plot)
+  }
+}
+```
+
+```{R}
+numeric_columns = yale[, sapply(yale, is.numeric)]
+# correlation matrix
+cor_matrix = cor(numeric_columns)
+
+# Get upper triangle of the correlation matrix
+get_upper_tri = function(data){
+  data[lower.tri(data)]<- NA
+  return(data)
+}
+
+reorder_data = function(data){
+  # Use correlation between variables as distance
+  dd = as.dist((1-data)/2)
+  hc = hclust(dd)
+  data = data[hc$order, hc$order]
+}
+library(reshape2)
+# Reorder the correlation matrix
+data = reorder_data(cor_matrix)
+upper_tri = get_upper_tri(cor_matrix)
+# Melt the correlation matrix
+melted_data = melt(upper_tri, na.rm = TRUE)
+# Create a ggheatmap
+library(RColorBrewer)
+ggheatmap = ggplot(melted_data, aes(Var2, Var1, fill = value)) +
+   geom_tile(color = "white") +
+   scale_fill_gradientn(colors = brewer.pal(n = 9, name = "Blues"), limits = c(-1, 1), name = "Pearson\nCorrelation") +
+   theme_minimal() +
+   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 12)) +
+   coord_fixed()
+# Print the heatmap
+print(ggheatmap)
+```
+
